@@ -7,10 +7,13 @@ VAR
 	bHomingSensor	AT%I*	: BOOL;
 	bMoveFw			AT%Q*	: BOOL;
 	bMoveBw			AT%Q*	: BOOL;
-	nMaxPosition			: INT;
+	nMaxPosition			: INT := 100;
 	nCurrentPosition		: INT;
 	bHome					: BOOL;
 	bBusy					: BOOL;
+	
+	fbRTrigPositionChanged	: R_TRIG;
+	fbRTrigHomingSensor		: R_TRIG;
 END_VAR
 ]]></Declaration>
     <Implementation>
@@ -22,17 +25,41 @@ VAR_INPUT
 END_VAR
 ]]></Declaration>
       <Implementation>
-        <ST><![CDATA[]]></ST>
+        <ST><![CDATA[bHome := bHomingSensor;
+M_CheckAndCalibratePosition();]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_CheckAndCalibratePosition" Id="{1e3c76b4-1a59-4bf7-8685-9d9c3b1015d2}">
+      <Declaration><![CDATA[METHOD PRIVATE M_CheckAndCalibratePosition
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[fbRTrigPositionChanged(CLK := bStepSensor);
+IF fbRTrigPositionChanged.Q AND bMoveFw THEN
+	nCurrentPosition := nCurrentPosition + 1;
+ELSIF fbRTrigPositionChanged.Q AND bMoveBw THEN
+	nCurrentPosition := nCurrentPosition -1;
+END_IF
+
+fbRTrigHomingSensor(ClK := bHomingSensor);
+IF fbRTrigHomingSensor.Q THEN
+	nCurrentPosition := 0;
+	M_StopEngine();
+END_IF]]></ST>
       </Implementation>
     </Method>
     <Method Name="M_MoveBackward" Id="{003eabef-d4c9-4627-bdd8-0fc5e3154391}">
       <Declaration><![CDATA[METHOD M_MoveBackward
 VAR_INPUT
-END_VAR
-]]></Declaration>
+END_VAR]]></Declaration>
       <Implementation>
-        <ST><![CDATA[bMoveBw := TRUE;
-bMoveFw := FALSE;]]></ST>
+        <ST><![CDATA[IF NOT bHomingSensor THEN
+	bMoveBw := TRUE;
+	bMoveFw := FALSE;
+ELSE
+	M_StopEngine();
+END_IF]]></ST>
       </Implementation>
     </Method>
     <Method Name="M_MoveForward" Id="{533999ff-536b-435d-ba30-8782be38e1fb}">
@@ -41,8 +68,12 @@ VAR_INPUT
 END_VAR
 ]]></Declaration>
       <Implementation>
-        <ST><![CDATA[bMoveBw := FALSE;
-bMoveFw := TRUE;]]></ST>
+        <ST><![CDATA[IF nCurrentPosition < nMaxPosition THEN
+	bMoveBw := FALSE;
+	bMoveFw := TRUE;
+ELSE
+	M_StopEngine();
+END_IF]]></ST>
       </Implementation>
     </Method>
     <Method Name="M_StopEngine" Id="{a758c370-a0f8-4d6c-b758-d68a8fac8df4}">

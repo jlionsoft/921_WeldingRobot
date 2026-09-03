@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Robot" Id="{a3eff82d-08df-4b38-a2a2-e8191aab9dc7}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Robot
+VAR
+	fbStepper		: FB_Stepper;
+	nNumber: INT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[fbStepper.Cycle();
+
+CASE nNumber OF
+	1: fbStepper.M_MoveBackward();
+	2: fbStepper.M_MoveForward();
+END_CASE]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

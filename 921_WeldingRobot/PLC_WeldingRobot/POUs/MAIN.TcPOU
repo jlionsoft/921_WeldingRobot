@@ -1,13 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{11809be1-9ff7-4a89-9e92-b65f67881044}">
+  <POU Name="MAIN" Id="{11809be1-9ff7-4a89-9e92-b65f67881044}" SpecialFunc="None">
     <Declaration><![CDATA[PROGRAM MAIN
 VAR
+	fbRobot		: FB_Robot;
 END_VAR
-]]>
-    </Declaration>
+]]></Declaration>
     <Implementation>
-      <ST><![CDATA[]]></ST>
+      <ST><![CDATA[fbRobot();]]></ST>
     </Implementation>
   </POU>
 </TcPlcObject>
