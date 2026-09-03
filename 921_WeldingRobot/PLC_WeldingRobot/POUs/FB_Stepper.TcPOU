@@ -62,7 +62,7 @@ bMoveFw := FALSE;]]></ST>
 END_VAR
 ]]></Declaration>
         <Implementation>
-          <ST><![CDATA[]]></ST>
+          <ST><![CDATA[P_Busy := bBusy;]]></ST>
         </Implementation>
       </Get>
       <Set Name="Set" Id="{ad42ed50-43e9-444c-a86d-7f084608d862}">
@@ -81,7 +81,7 @@ END_VAR
 END_VAR
 ]]></Declaration>
         <Implementation>
-          <ST><![CDATA[]]></ST>
+          <ST><![CDATA[P_CurrentPosition := nCurrentPosition;]]></ST>
         </Implementation>
       </Get>
       <Set Name="Set" Id="{972b4ecd-f97d-43e6-a32f-e5884646440e}">
