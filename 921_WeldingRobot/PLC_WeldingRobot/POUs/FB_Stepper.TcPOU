@@ -1,0 +1,97 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Stepper" Id="{d4eb378b-765b-408e-b48c-2aa653418c52}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Stepper
+VAR
+	bStepSensor		AT%I*	: BOOL;
+	bHomingSensor	AT%I*	: BOOL;
+	bMoveFw			AT%Q*	: BOOL;
+	bMoveBw			AT%Q*	: BOOL;
+	nMaxPosition			: INT;
+	nCurrentPosition		: INT;
+	bHome					: BOOL;
+	bBusy					: BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="Cycle" Id="{bd28583d-a4b9-4835-ac4e-2fc532d52f52}">
+      <Declaration><![CDATA[METHOD Cycle
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_MoveBackward" Id="{003eabef-d4c9-4627-bdd8-0fc5e3154391}">
+      <Declaration><![CDATA[METHOD M_MoveBackward
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bMoveBw := TRUE;
+bMoveFw := FALSE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_MoveForward" Id="{533999ff-536b-435d-ba30-8782be38e1fb}">
+      <Declaration><![CDATA[METHOD M_MoveForward
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bMoveBw := FALSE;
+bMoveFw := TRUE;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_StopEngine" Id="{a758c370-a0f8-4d6c-b758-d68a8fac8df4}">
+      <Declaration><![CDATA[METHOD M_StopEngine
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bMoveBw := FALSE;
+bMoveFw := FALSE;]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="P_Busy" Id="{5d459c85-c766-48a3-b76a-dbaf5860c091}">
+      <Declaration><![CDATA[PROPERTY P_Busy : BOOL]]></Declaration>
+      <Get Name="Get" Id="{e570d3b3-732e-489a-867c-4fa999183068}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{ad42ed50-43e9-444c-a86d-7f084608d862}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="P_CurrentPosition" Id="{eb767b90-5dd0-416d-8a6d-1670a6661168}">
+      <Declaration><![CDATA[PROPERTY P_CurrentPosition : INT]]></Declaration>
+      <Get Name="Get" Id="{a423d580-972f-4d3e-9384-fbe85db3c683}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{972b4ecd-f97d-43e6-a32f-e5884646440e}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+  </POU>
+</TcPlcObject>
