@@ -4,9 +4,10 @@
     <Declaration><![CDATA[TYPE ST_Order :
 STRUCT
 	nTargetTable	: INT;
-	tWeldingTime	: TIME;
+	tWeldingTime	: TIME := T#2S;
 	bDone			: BOOL;
 	bIsValid		: BOOL;
+	bWeld			: BOOL := TRUE;
 END_STRUCT
 END_TYPE
 ]]></Declaration>

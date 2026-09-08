@@ -5,6 +5,8 @@
 (
 	eAuto_reset,
 	eAuto_ready,
+	eAuto_searchOrder,
+	eAuto_noOrder,
 	eAuto_approachPosition,
 	eAuto_weld
 );

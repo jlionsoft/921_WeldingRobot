@@ -29,7 +29,7 @@
 		</System>
 		<Plc>
 			<Project GUID="{8A00CBF1-4E67-4812-B970-D4AFB6E33AC8}" Name="PLC_WeldingRobot" PrjFilePath="PLC_WeldingRobot\PLC_WeldingRobot.plcproj" TmcFilePath="PLC_WeldingRobot\PLC_WeldingRobot.tmc" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true">
-				<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcHash="{07B5E314-6650-DEB8-6D82-3F7EE3D27857}" TmcPath="PLC_WeldingRobot\PLC_WeldingRobot.tmc">
+				<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcHash="{4A10D30D-45D2-FB64-692A-690E76836733}" TmcPath="PLC_WeldingRobot\PLC_WeldingRobot.tmc">
 					<Name>PLC_WeldingRobot Instance</Name>
 					<CLSID ClassFactory="TcPlc30">{08500001-0000-0000-F000-000000000064}</CLSID>
 					<Vars VarGrpType="2" AreaNo="1">

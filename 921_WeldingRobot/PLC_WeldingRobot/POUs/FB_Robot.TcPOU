@@ -3,40 +3,55 @@
   <POU Name="FB_Robot" Id="{a3eff82d-08df-4b38-a2a2-e8191aab9dc7}" SpecialFunc="None">
     <Declaration><![CDATA[FUNCTION_BLOCK FB_Robot
 VAR
-	bStart				: BOOL;
-	bReset				: BOOL;
-	bStop				: BOOL;
-	bMoveFw				: BOOL;
-	bMoveBw				: BOOL;
-	bWeld	AT%Q*		: BOOL;
-	tWeldTime			: TIME;
-	bBusy				: BOOL;
-	
-	bManMoveFw			: BOOL;
-	bManMoveBw			: BOOL;
-	bManWeld			: BOOL;
-	                	
-	bRobotReleased		: BOOL;
-	                	
-	fbStepper			: FB_Stepper;
-	nState				: E_Mode := eMode_Initial;
-	nManualModeState	: E_ManualMode := eManual_nothing;
-	nSemiAutoState		: E_SemiAutomatic := eSemi_wayBack;
-	order				: ST_Order;
-	orders				: ARRAY [1..10] OF ST_Order := [(nTargetTable:=1, tWeldingTime :=T#2S), (nTargetTable := 2, tWeldingTime := T#4S), (nTargetTable := 1, tWeldingTime := T#1S)];
-	fbWeldingTimer		: TON;
-	fbAutoWeldingTimer	: TON;
-	nAutomaticState		: E_AutomaticMode := eAuto_reset;
-	nCurrentOrder		: INT;
+    bStart              : BOOL;
+    bReset              : BOOL;
+    bStop               : BOOL;
+    bMoveFw             : BOOL;
+    bMoveBw             : BOOL;
+    bWeld AT%Q*         : BOOL;
+    bBusy               : BOOL;
 
-	fbRTrigStart		: R_TRIG;
-	
-	
-	nPositionTable1		: INT := 28;
-	nPositionTable2		: INT := 45;
-	nPositionTable3		: INT := 74;
-END_VAR
-]]></Declaration>
+    bManMoveFw          : BOOL;
+    bManMoveBw          : BOOL;
+    bManWeld            : BOOL;
+
+    bRobotReleased      : BOOL;
+
+    fbStepper           : FB_Stepper;
+    nState              : E_Mode := eMode_Initial;
+    nActiveState        : E_Mode := eMode_Initial;
+
+    nManualModeState    : E_ManualMode := eManual_nothing;
+    nSemiAutoState      : E_SemiAutomatic := eSemi_wayBack;
+
+    order               : ST_Order;
+
+    orders              : ARRAY [1..10] OF ST_Order :=
+    [
+        (nTargetTable := 1, tWeldingTime := T#2S),
+        (nTargetTable := 4, tWeldingTime := T#4S),
+        (nTargetTable := 1, tWeldingTime := T#1s, bWeld := FALSE),
+        (nTargetTable := 3, tWeldingTime := T#3S),
+        (nTargetTable := 2, tWeldingTime := T#5S),
+        (nTargetTable := 0, tWeldingTime := T#2S),
+        (nTargetTable := 3, tWeldingTime := T#4s, bWeld := FALSE),
+        (nTargetTable := 2, tWeldingTime := T#1MS),
+        (nTargetTable := 1, tWeldingTime := T#3S),
+        (nTargetTable := 3, tWeldingTime := T#2M)
+    ];
+
+    fbWeldingTimer      : TON;
+    fbAutoWeldingTimer  : TON;
+
+    nAutomaticState     : E_AutomaticMode := eAuto_reset;
+    nCurrentOrder       : INT := 1;
+
+    fbRTrigStart        : R_TRIG;
+
+    nPositionTable1     : INT := 28;
+    nPositionTable2     : INT := 45;
+    nPositionTable3     : INT := 74;
+END_VAR]]></Declaration>
     <Implementation>
       <ST><![CDATA[]]></ST>
     </Implementation>
@@ -45,40 +60,78 @@ END_VAR
 VAR_INPUT
 END_VAR]]></Declaration>
       <Implementation>
-        <ST><![CDATA[
-fbStepper.Cycle();
+        <ST><![CDATA[fbStepper.Cycle();
 fbRTrigStart(CLK := bStart);
 
-IF (bMoveFw AND bMoveBw) OR (bWeld AND (bMoveFw OR bMoveBw)) THEN
-	nState := eMode_Secure;
-END_IF
+// Determine the busy status from the currently active operating mode.
+// bBusy is calculated at one central location only.
+CASE nActiveState OF
 
-IF bReset THEN
-	nState := eMode_Reset;
-END_IF
+    eMode_Manual:
+        bBusy := nManualModeState <> eManual_nothing;
 
+    eMode_SemiAutomataic:
+        bBusy := nSemiAutoState <> eSemi_ready;
+
+    eMode_FullyAutomatic:
+        bBusy := nAutomaticState <> eAuto_ready;
+
+ELSE
+    bBusy := FALSE;
+
+END_CASE
+
+
+// Stop has the highest priority.
 IF bStop THEN
-	nState := eMode_Stop;
+    nState := eMode_Stop;
+    nActiveState := eMode_Stop;
+
+// Reset has priority over normal mode selection.
+ELSIF bReset THEN
+    nState := eMode_Reset;
+    nActiveState := eMode_Reset;
+
+// Switch to the secure state if conflicting outputs are active.
+ELSIF (bMoveFw AND bMoveBw)
+   OR (bWeld AND (bMoveFw OR bMoveBw)) THEN
+
+    nState := eMode_Secure;
+    nActiveState := eMode_Secure;
+
+// A normal mode change is only accepted while the robot is not busy.
+// nState can be changed through the debugger and acts as the mode request.
+ELSIF NOT bBusy THEN
+    nActiveState := nState;
+
 END_IF
 
-CASE nState OF
-	eMode_Secure:
-		M_RobotSecure();
-	
-	eMode_Reset:
-		M_RobotReset();
-		
-	eMode_Stop:
-		M_RobotStop();
-		
-	eMode_Manual:
-		M_RobotManualControl();
-		
-	eMode_Initial:
-		M_RobotInitialSettings();
-		
-	eMode_SemiAutomataic:
-		M_RobotSemiAutomatic();
+
+// Always execute the currently active operating mode.
+// Do not check bBusy here; a running sequence must continue while busy.
+CASE nActiveState OF
+
+    eMode_Secure:
+        M_RobotSecure();
+
+    eMode_Reset:
+        M_RobotReset();
+
+    eMode_Stop:
+        M_RobotStop();
+
+    eMode_Manual:
+        M_RobotManualControl();
+
+    eMode_Initial:
+        M_RobotInitialSettings();
+
+    eMode_SemiAutomataic:
+        M_RobotSemiAutomatic();
+
+    eMode_FullyAutomatic:
+        M_Automatic();
+
 END_CASE]]></ST>
       </Implementation>
     </Method>
@@ -113,30 +166,106 @@ END_IF]]></ST>
       <Declaration><![CDATA[METHOD M_Automatic
 VAR_INPUT
 END_VAR
+VAR
+	nCount		: INT;
+	bOrderFound	: BOOL;
+END_VAR
 ]]></Declaration>
       <Implementation>
-        <ST><![CDATA[fbAutoWeldingTimer(IN:= nAutomaticState = eAuto_weld, PT := orders[nCurrentOrder].tWeldingTime);
+        <ST><![CDATA[// Call the welding timer cyclically.
+// Access the order array only while a valid order is being welded.
+IF nAutomaticState = eAuto_weld THEN
+    fbAutoWeldingTimer(
+        IN := TRUE,
+        PT := orders[nCurrentOrder].tWeldingTime
+    );
+ELSE
+    // Reset the timer outside the welding state.
+    // This also avoids an invalid array access at startup
+    // when nCurrentOrder is still 0.
+    fbAutoWeldingTimer(
+        IN := FALSE,
+        PT := T#0s
+    );
+END_IF
 
 CASE nAutomaticState OF
-	eAuto_reset:
-		IF fbStepper.M_Calibrate() THEN
-			nAutomaticState := eAuto_ready;
-		END_IF
-	eAuto_ready:
-		orders[nCurrentOrder].bIsValid := (orders[nCurrentOrder].nTargetTable>0 AND orders[nCurrentOrder].nTargetTable<=3);
-		IF orders[nCurrentOrder].bIsValid THEN
-			nAutomaticState := eAuto_approachPosition;
-		END_IF
-	eAuto_approachPosition:
-		bWeld := FALSE;
-		IF M_ApproachTable(orders[nCurrentOrder].nTargetTable) THEN
-			nAutomaticState := eAuto_weld;
-		END_IF
-	eAuto_weld:
-		IF fbWeldingTimer.Q THEN
-			nAutomaticState := eAuto_ready;
-		END_IF
-		bWeld := TRUE;
+
+    eAuto_reset:
+        // Calibrate the stepper before automatic operation is allowed.
+        bWeld := FALSE;
+
+        IF fbStepper.M_Calibrate() THEN
+            nAutomaticState := eAuto_ready;
+        END_IF
+
+    eAuto_ready:
+        // Wait for a rising start signal.
+        bWeld := FALSE;
+
+        IF fbRTrigStart.Q THEN
+            nAutomaticState := eAuto_searchOrder;
+        END_IF
+
+    eAuto_searchOrder:
+        // Search the order array for the first valid,
+        // not yet completed order.
+        bWeld := FALSE;
+        bOrderFound := FALSE;
+
+        FOR nCount := 1 TO 10 BY 1 DO
+
+            // Validate target table and welding-time limits.
+            orders[nCount].bIsValid :=
+                (orders[nCount].nTargetTable > 0)
+                AND (orders[nCount].nTargetTable <= 3)
+                AND (orders[nCount].tWeldingTime > T#100ms)
+                AND (orders[nCount].tWeldingTime <= T#1m);
+
+            // Select the first valid order that has not been processed yet.
+            IF orders[nCount].bIsValid
+               AND NOT orders[nCount].bDone THEN
+
+                bOrderFound := TRUE;
+                nCurrentOrder := nCount;
+
+                // Stop searching after the first matching order.
+                EXIT;
+            END_IF
+
+        END_FOR
+
+        IF bOrderFound THEN
+            nAutomaticState := eAuto_approachPosition;
+        ELSE
+            // No open valid orders are available.
+            // Restart calibration before returning to automatic operation.
+            nAutomaticState := eAuto_reset;
+        END_IF
+
+    eAuto_approachPosition:
+        // Move the stepper to the target table of the selected order.
+        bWeld := FALSE;
+
+        IF M_ApproachTable(orders[nCurrentOrder].nTargetTable) THEN
+            nAutomaticState := eAuto_weld;
+        END_IF
+
+    eAuto_weld:
+        // Mark the current order as completed after welding time elapsed.
+        IF fbAutoWeldingTimer.Q THEN
+            orders[nCurrentOrder].bDone := TRUE;
+            nAutomaticState := eAuto_searchOrder;
+        END_IF
+
+        // Enable the welding output only if welding is requested
+        // by the selected order.
+        IF orders[nCurrentOrder].bWeld THEN
+            bWeld := TRUE;
+        ELSE
+            bWeld := FALSE;
+        END_IF
+
 END_CASE]]></ST>
       </Implementation>
     </Method>
@@ -150,10 +279,10 @@ VAR
 END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[bCalibrated := fbStepper.M_Calibrate();
-		IF bCalibrated THEN
-			bRobotReleased := FALSE;
-			nState := eMode_Secure;
-		END_IF]]></ST>
+IF bCalibrated THEN
+	bRobotReleased := FALSE;
+	nState := eMode_Secure;
+END_IF]]></ST>
       </Implementation>
     </Method>
     <Method Name="M_RobotManualControl" Id="{95b77aa7-d422-4297-a6ed-2c9d09c916f8}">
@@ -163,59 +292,69 @@ END_VAR
 ]]></Declaration>
       <Implementation>
         <ST><![CDATA[CASE nManualModeState OF
-	// Safe idle state: welding is disabled and the stepper motor is stopped.
-	eManual_nothing:
-		bWeld := FALSE;
-		fbStepper.M_StopEngine();
-		
-		// Only allow one manual command at a time to avoid conflicting actions.
-		IF bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
-			nManualModeState := eManual_forward;
-		
-		ELSIF bManMoveBw AND NOT bManMoveFw AND NOT bManWeld THEN
-			nManualModeState := eManual_backward;
-			
-		ELSIF bManWeld AND NOT bManMoveFw AND NOT bManMoveFw THEN
-			nManualModeState := eManual_weld;
-			
-		END_IF
-		
-	// Keep welding active while the manual weld command is pressed.
-	eManual_weld:
-		IF bManMoveFw OR bManMoveBw THEN
-			nManualModeState := eManual_error;
-		ELSIF NOT bManWeld THEN
-			nManualModeState := eManual_nothing;
-		END_IF
-		bWeld := TRUE;
-	
-	// Move the stepper motor backward until the command is released.
-	eManual_backward:
-		bWeld := FALSE;
-		IF bManMoveFw OR bManWeld THEN
-			nManualModeState := eManual_error;
-		ELSIF NOT bManMoveBw THEN
-			nManualModeState := eManual_nothing;	
-		END_IF		
-		fbStepper.M_MoveBackward();
-	
-	// Move the stepper motor forward until the command is released.
-	eManual_forward:
-		bWeld := FALSE;
-		IF bManMoveBw OR bManWeld THEN
-			nManualModeState := eManual_error;
-		ELSIF NOT bManMoveFw THEN
-			nManualModeState := eManual_nothing;	
-		END_IF
-		fbStepper.M_MoveForward();
-	
-	// Dont do anything until all variables are false
-	eManual_error:
-		bWeld := FALSE;
-		fbStepper.M_StopEngine();
-		IF NOT bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
-			nManualModeState := eManual_nothing;
-		END_IF
+
+    // Safe idle state: welding is disabled and the stepper motor is stopped.
+    eManual_nothing:
+        bWeld := FALSE;
+        fbStepper.M_StopEngine();
+
+        // Only allow one manual command at a time to avoid conflicting actions.
+        IF bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
+            nManualModeState := eManual_forward;
+
+        ELSIF bManMoveBw AND NOT bManMoveFw AND NOT bManWeld THEN
+            nManualModeState := eManual_backward;
+
+        ELSIF bManWeld AND NOT bManMoveFw AND NOT bManMoveFw THEN
+            nManualModeState := eManual_weld;
+
+        END_IF
+
+    // Keep welding active while the manual weld command is pressed.
+    eManual_weld:
+        IF bManMoveFw OR bManMoveBw THEN
+            nManualModeState := eManual_error;
+
+        ELSIF NOT bManWeld THEN
+            nManualModeState := eManual_nothing;
+        END_IF
+
+        bWeld := TRUE;
+
+    // Move the stepper motor backward until the command is released.
+    eManual_backward:
+        bWeld := FALSE;
+
+        IF bManMoveFw OR bManWeld THEN
+            nManualModeState := eManual_error;
+
+        ELSIF NOT bManMoveBw THEN
+            nManualModeState := eManual_nothing;
+        END_IF
+
+        fbStepper.M_MoveBackward();
+
+    // Move the stepper motor forward until the command is released.
+    eManual_forward:
+        bWeld := FALSE;
+
+        IF bManMoveBw OR bManWeld THEN
+            nManualModeState := eManual_error;
+
+        ELSIF NOT bManMoveFw THEN
+            nManualModeState := eManual_nothing;
+        END_IF
+
+        fbStepper.M_MoveForward();
+
+    // Dont do anything until all variables are false.
+    eManual_error:
+        bWeld := FALSE;
+        fbStepper.M_StopEngine();
+
+        IF NOT bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
+            nManualModeState := eManual_nothing;
+        END_IF
 
 END_CASE]]></ST>
       </Implementation>
@@ -229,11 +368,16 @@ VAR
 END_VAR]]></Declaration>
       <Implementation>
         <ST><![CDATA[bWeld := FALSE;
+
 bCalibrated := fbStepper.M_Calibrate();
+
 IF bCalibrated THEN
-	bRobotReleased := FALSE;
-	nState := eMode_Secure;
-END_IF]]></ST>
+    bRobotReleased := FALSE;
+    nState := eMode_Secure;
+    nActiveState := eMode_Secure;
+END_IF
+
+nAutomaticState := eAuto_reset;]]></ST>
       </Implementation>
     </Method>
     <Method Name="M_RobotSecure" Id="{3323f2c5-0a5e-45d9-94b4-6d5d5ed9316e}">
@@ -246,7 +390,7 @@ END_VAR
 fbStepper.M_StopEngine();
 
 IF fbRTrigStart.Q THEN
-	bRobotReleased := TRUE;
+    bRobotReleased := TRUE;
 END_IF]]></ST>
       </Implementation>
     </Method>
@@ -256,32 +400,45 @@ VAR_INPUT
 END_VAR
 ]]></Declaration>
       <Implementation>
-        <ST><![CDATA[fbWeldingTimer(IN:= nSemiAutoState = eSemi_weld, PT := order.tWeldingTime);
+        <ST><![CDATA[fbWeldingTimer(
+    IN := nSemiAutoState = eSemi_weld,
+    PT := order.tWeldingTime
+);
+
 CASE nSemiAutoState OF
-	eSemi_ready:
-		IF fbRTrigStart.Q AND NOT order.bDone THEN
-			nSemiAutoState := eSemi_wayThere;
-		END_IF
-		
-	eSemi_wayThere:
-		bWeld := FALSE;
-		IF M_ApproachTable(order.nTargetTable) THEN
-			nSemiAutoState := eSemi_weld;
-		END_IF
-		
-	eSemi_weld:
-		IF fbWeldingTimer.Q THEN
-			nSemiAutoState := eSemi_wayBack;
-		END_IF
-		bWeld := TRUE;
-		
-	eSemi_wayBack:
-		bWeld := FALSE;
-		fbStepper.M_MoveBackward();
-		IF fbStepper.P_Home THEN
-			nSemiAutoState := eSemi_ready;
-			order.bDone := TRUE;
-		END_IF
+
+    eSemi_ready:
+        IF fbRTrigStart.Q AND NOT order.bDone THEN
+            nSemiAutoState := eSemi_wayThere;
+        END_IF
+
+    eSemi_wayThere:
+        bWeld := FALSE;
+
+        IF M_ApproachTable(order.nTargetTable) THEN
+            nSemiAutoState := eSemi_weld;
+        END_IF
+
+    eSemi_weld:
+        IF fbWeldingTimer.Q THEN
+            nSemiAutoState := eSemi_wayBack;
+        END_IF
+
+        bWeld := TRUE;
+
+    eSemi_wayBack:
+        bWeld := FALSE;
+        fbStepper.M_MoveBackward();
+
+        IF fbStepper.P_Home THEN
+            nSemiAutoState := eSemi_ready;
+            order.bDone := TRUE;
+
+            IF nCurrentOrder <= 3 THEN
+                nCurrentOrder := nCurrentOrder + 1;
+            END_IF
+        END_IF
+
 END_CASE]]></ST>
       </Implementation>
     </Method>
@@ -294,9 +451,13 @@ END_VAR
         <ST><![CDATA[bWeld := FALSE;
 fbStepper.M_StopEngine();
 bRobotReleased := FALSE;
+
 IF NOT bStop THEN
-	nState := eMode_Secure;
-END_IF]]></ST>
+    nState := eMode_Secure;
+    nActiveState := eMode_Secure;
+END_IF
+
+nAutomaticState := eAuto_ready;]]></ST>
       </Implementation>
     </Method>
     <Property Name="P_Mode" Id="{16e2b740-90a2-43c3-93b2-7efec441eb44}">
