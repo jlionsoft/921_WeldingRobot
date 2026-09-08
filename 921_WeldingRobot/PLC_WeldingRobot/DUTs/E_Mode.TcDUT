@@ -8,7 +8,7 @@
 	eMode_Reset,
 	eMode_Stop,
 	eMode_Manual,
-	eMode_SemiAutomataic,
+	eMode_SemiAutomatic,
 	eMode_FullyAutomatic
 );
 END_TYPE

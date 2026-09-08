@@ -26,7 +26,7 @@ VAR
 
     order               : ST_Order;
 
-    orders              : ARRAY [1..10] OF ST_Order :=
+    aOrders              : ARRAY [1..10] OF ST_Order :=
     [
         (nTargetTable := 1, tWeldingTime := T#2S),
         (nTargetTable := 4, tWeldingTime := T#4S),
@@ -48,9 +48,9 @@ VAR
 
     fbRTrigStart        : R_TRIG;
 
-    nPositionTable1     : INT := 28;
+    nPositionTable1     : INT := 30;
     nPositionTable2     : INT := 45;
-    nPositionTable3     : INT := 74;
+    nPositionTable3     : INT := 70;
 END_VAR]]></Declaration>
     <Implementation>
       <ST><![CDATA[]]></ST>
@@ -70,7 +70,7 @@ CASE nActiveState OF
     eMode_Manual:
         bBusy := nManualModeState <> eManual_nothing;
 
-    eMode_SemiAutomataic:
+    eMode_SemiAutomatic:
         bBusy := nSemiAutoState <> eSemi_ready;
 
     eMode_FullyAutomatic:
@@ -100,9 +100,11 @@ ELSIF (bMoveFw AND bMoveBw)
     nActiveState := eMode_Secure;
 
 // A normal mode change is only accepted while the robot is not busy.
-// nState can be changed through the debugger and acts as the mode request.
-ELSIF NOT bBusy THEN
-    nActiveState := nState;
+ELSIF (nState <> nActiveState) AND NOT bBusy THEN
+
+    IF fbRTrigStart.Q THEN
+        nActiveState := nState;
+    END_IF
 
 END_IF
 
@@ -126,7 +128,7 @@ CASE nActiveState OF
     eMode_Initial:
         M_RobotInitialSettings();
 
-    eMode_SemiAutomataic:
+    eMode_SemiAutomatic:
         M_RobotSemiAutomatic();
 
     eMode_FullyAutomatic:
@@ -177,7 +179,7 @@ END_VAR
 IF nAutomaticState = eAuto_weld THEN
     fbAutoWeldingTimer(
         IN := TRUE,
-        PT := orders[nCurrentOrder].tWeldingTime
+        PT := aOrders[nCurrentOrder].tWeldingTime
     );
 ELSE
     // Reset the timer outside the welding state.
@@ -216,15 +218,15 @@ CASE nAutomaticState OF
         FOR nCount := 1 TO 10 BY 1 DO
 
             // Validate target table and welding-time limits.
-            orders[nCount].bIsValid :=
-                (orders[nCount].nTargetTable > 0)
-                AND (orders[nCount].nTargetTable <= 3)
-                AND (orders[nCount].tWeldingTime > T#100ms)
-                AND (orders[nCount].tWeldingTime <= T#1m);
+            aOrders[nCount].bIsValid :=
+                (aOrders[nCount].nTargetTable > 0)
+                AND (aOrders[nCount].nTargetTable <= 3)
+                AND (aOrders[nCount].tWeldingTime > T#100ms)
+                AND (aOrders[nCount].tWeldingTime <= T#1m);
 
             // Select the first valid order that has not been processed yet.
-            IF orders[nCount].bIsValid
-               AND NOT orders[nCount].bDone THEN
+            IF aOrders[nCount].bIsValid
+               AND NOT aOrders[nCount].bDone THEN
 
                 bOrderFound := TRUE;
                 nCurrentOrder := nCount;
@@ -247,20 +249,20 @@ CASE nAutomaticState OF
         // Move the stepper to the target table of the selected order.
         bWeld := FALSE;
 
-        IF M_ApproachTable(orders[nCurrentOrder].nTargetTable) THEN
+        IF M_ApproachTable(aOrders[nCurrentOrder].nTargetTable) THEN
             nAutomaticState := eAuto_weld;
         END_IF
 
     eAuto_weld:
         // Mark the current order as completed after welding time elapsed.
         IF fbAutoWeldingTimer.Q THEN
-            orders[nCurrentOrder].bDone := TRUE;
+            aOrders[nCurrentOrder].bDone := TRUE;
             nAutomaticState := eAuto_searchOrder;
         END_IF
 
         // Enable the welding output only if welding is requested
         // by the selected order.
-        IF orders[nCurrentOrder].bWeld THEN
+        IF aOrders[nCurrentOrder].bWeld THEN
             bWeld := TRUE;
         ELSE
             bWeld := FALSE;
@@ -297,18 +299,16 @@ END_VAR
     eManual_nothing:
         bWeld := FALSE;
         fbStepper.M_StopEngine();
+		// Only allow one manual command at a time to avoid conflicting actions.
+		IF bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
+			nManualModeState := eManual_forward;
 
-        // Only allow one manual command at a time to avoid conflicting actions.
-        IF bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
-            nManualModeState := eManual_forward;
+		ELSIF bManMoveBw AND NOT bManMoveFw AND NOT bManWeld THEN
+			nManualModeState := eManual_backward;
 
-        ELSIF bManMoveBw AND NOT bManMoveFw AND NOT bManWeld THEN
-            nManualModeState := eManual_backward;
-
-        ELSIF bManWeld AND NOT bManMoveFw AND NOT bManMoveFw THEN
-            nManualModeState := eManual_weld;
-
-        END_IF
+		ELSIF bManWeld AND NOT bManMoveFw AND NOT bManMoveFw THEN
+			nManualModeState := eManual_weld;
+		END_IF
 
     // Keep welding active while the manual weld command is pressed.
     eManual_weld:
@@ -400,40 +400,58 @@ VAR_INPUT
 END_VAR
 ]]></Declaration>
       <Implementation>
-        <ST><![CDATA[fbWeldingTimer(
+        <ST><![CDATA[// Call the welding timer cyclically.
+// The timer runs only while the semi-automatic welding state is active.
+fbWeldingTimer(
     IN := nSemiAutoState = eSemi_weld,
     PT := order.tWeldingTime
 );
 
 CASE nSemiAutoState OF
 
+	// wait for start
     eSemi_ready:
+        // Wait for a rising start signal.
+        // Do not start if the current order has already been completed.
         IF fbRTrigStart.Q AND NOT order.bDone THEN
             nSemiAutoState := eSemi_wayThere;
         END_IF
-
+	
+	// move to target position
     eSemi_wayThere:
+        // Welding must remain disabled while moving to the target table.
         bWeld := FALSE;
 
+        // Move to the table defined by the current order.
+        // Continue with welding after the target position is reached.
         IF M_ApproachTable(order.nTargetTable) THEN
             nSemiAutoState := eSemi_weld;
         END_IF
-
-    eSemi_weld:
+	
+	//weld at target position
+    eSemi_weld:			
+        // Start returning to the home position after the welding time elapsed.
         IF fbWeldingTimer.Q THEN
             nSemiAutoState := eSemi_wayBack;
         END_IF
 
+        // Enable the welding output while the welding state is active.
         bWeld := TRUE;
-
+	
+	// move back to home position
     eSemi_wayBack:
+        // Disable welding before moving back to the home position.
         bWeld := FALSE;
+
+        // Move the stepper motor back to its home position.
         fbStepper.M_MoveBackward();
 
+        // Mark the order as completed after the home position is reached.
         IF fbStepper.P_Home THEN
             nSemiAutoState := eSemi_ready;
             order.bDone := TRUE;
 
+            // Select the next order index if one is available.
             IF nCurrentOrder <= 3 THEN
                 nCurrentOrder := nCurrentOrder + 1;
             END_IF
