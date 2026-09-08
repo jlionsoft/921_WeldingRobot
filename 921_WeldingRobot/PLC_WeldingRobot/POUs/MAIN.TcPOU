@@ -7,7 +7,7 @@ VAR
 END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[fbRobot();]]></ST>
+      <ST><![CDATA[fbRobot.Cycle();]]></ST>
     </Implementation>
   </POU>
 </TcPlcObject>

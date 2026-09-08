@@ -3,17 +3,323 @@
   <POU Name="FB_Robot" Id="{a3eff82d-08df-4b38-a2a2-e8191aab9dc7}" SpecialFunc="None">
     <Declaration><![CDATA[FUNCTION_BLOCK FB_Robot
 VAR
-	fbStepper		: FB_Stepper;
-	nNumber: INT;
+	bStart				: BOOL;
+	bReset				: BOOL;
+	bStop				: BOOL;
+	bMoveFw				: BOOL;
+	bMoveBw				: BOOL;
+	bWeld	AT%Q*		: BOOL;
+	tWeldTime			: TIME;
+	bBusy				: BOOL;
+	
+	bManMoveFw			: BOOL;
+	bManMoveBw			: BOOL;
+	bManWeld			: BOOL;
+	                	
+	bRobotReleased		: BOOL;
+	                	
+	fbStepper			: FB_Stepper;
+	nState				: E_Mode := eMode_Initial;
+	nManualModeState	: E_ManualMode := eManual_nothing;
+	nSemiAutoState		: E_SemiAutomatic := eSemi_wayBack;
+	order				: ST_Order;
+	orders				: ARRAY [1..10] OF ST_Order := [(nTargetTable:=1, tWeldingTime :=T#2S), (nTargetTable := 2, tWeldingTime := T#4S), (nTargetTable := 1, tWeldingTime := T#1S)];
+	fbWeldingTimer		: TON;
+	fbAutoWeldingTimer	: TON;
+	nAutomaticState		: E_AutomaticMode := eAuto_reset;
+	nCurrentOrder		: INT;
+
+	fbRTrigStart		: R_TRIG;
+	
+	
+	nPositionTable1		: INT := 28;
+	nPositionTable2		: INT := 45;
+	nPositionTable3		: INT := 74;
 END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[fbStepper.Cycle();
-
-CASE nNumber OF
-	1: fbStepper.M_MoveBackward();
-	2: fbStepper.M_MoveForward();
-END_CASE]]></ST>
+      <ST><![CDATA[]]></ST>
     </Implementation>
+    <Method Name="Cycle" Id="{6a592d90-bf77-4ece-aa34-9cf072f91431}">
+      <Declaration><![CDATA[METHOD Cycle
+VAR_INPUT
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+fbStepper.Cycle();
+fbRTrigStart(CLK := bStart);
+
+IF (bMoveFw AND bMoveBw) OR (bWeld AND (bMoveFw OR bMoveBw)) THEN
+	nState := eMode_Secure;
+END_IF
+
+IF bReset THEN
+	nState := eMode_Reset;
+END_IF
+
+IF bStop THEN
+	nState := eMode_Stop;
+END_IF
+
+CASE nState OF
+	eMode_Secure:
+		M_RobotSecure();
+	
+	eMode_Reset:
+		M_RobotReset();
+		
+	eMode_Stop:
+		M_RobotStop();
+		
+	eMode_Manual:
+		M_RobotManualControl();
+		
+	eMode_Initial:
+		M_RobotInitialSettings();
+		
+	eMode_SemiAutomataic:
+		M_RobotSemiAutomatic();
+END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_ApproachTable" Id="{7a6bdaf6-9e84-4b59-b1ac-f11cf7e2720d}">
+      <Declaration><![CDATA[METHOD M_ApproachTable : BOOL;
+VAR_INPUT
+	nTargetTable	: INT;
+END_VAR
+VAR
+	bTargetReached	: BOOL;
+	nTargetPosition	: INT;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[//load targetpositions
+CASE nTargetTable OF
+	1: nTargetPosition := nPositionTable1;
+	2: nTargetPosition := nPositionTable2;
+	3: nTargetPosition := nPositionTable3;
+END_CASE
+
+//approve/move to target position
+bTargetReached := fbStepper.M_ApproachPosition(nTargetPosition);
+
+//return (true) when target reached
+IF bTargetReached THEN
+	M_ApproachTable := TRUE;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_Automatic" Id="{0871b3d5-f802-4d54-ae62-686b0ca1bd1f}">
+      <Declaration><![CDATA[METHOD M_Automatic
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[fbAutoWeldingTimer(IN:= nAutomaticState = eAuto_weld, PT := orders[nCurrentOrder].tWeldingTime);
+
+CASE nAutomaticState OF
+	eAuto_reset:
+		IF fbStepper.M_Calibrate() THEN
+			nAutomaticState := eAuto_ready;
+		END_IF
+	eAuto_ready:
+		orders[nCurrentOrder].bIsValid := (orders[nCurrentOrder].nTargetTable>0 AND orders[nCurrentOrder].nTargetTable<=3);
+		IF orders[nCurrentOrder].bIsValid THEN
+			nAutomaticState := eAuto_approachPosition;
+		END_IF
+	eAuto_approachPosition:
+		bWeld := FALSE;
+		IF M_ApproachTable(orders[nCurrentOrder].nTargetTable) THEN
+			nAutomaticState := eAuto_weld;
+		END_IF
+	eAuto_weld:
+		IF fbWeldingTimer.Q THEN
+			nAutomaticState := eAuto_ready;
+		END_IF
+		bWeld := TRUE;
+END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_RobotInitialSettings" Id="{f02b94eb-ca36-4f08-9d40-bed28dddeb38}">
+      <Declaration><![CDATA[METHOD PRIVATE M_RobotInitialSettings
+VAR_INPUT
+END_VAR
+
+VAR
+	bCalibrated: BOOL;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bCalibrated := fbStepper.M_Calibrate();
+		IF bCalibrated THEN
+			bRobotReleased := FALSE;
+			nState := eMode_Secure;
+		END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_RobotManualControl" Id="{95b77aa7-d422-4297-a6ed-2c9d09c916f8}">
+      <Declaration><![CDATA[METHOD PRIVATE M_RobotManualControl
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[CASE nManualModeState OF
+	// Safe idle state: welding is disabled and the stepper motor is stopped.
+	eManual_nothing:
+		bWeld := FALSE;
+		fbStepper.M_StopEngine();
+		
+		// Only allow one manual command at a time to avoid conflicting actions.
+		IF bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
+			nManualModeState := eManual_forward;
+		
+		ELSIF bManMoveBw AND NOT bManMoveFw AND NOT bManWeld THEN
+			nManualModeState := eManual_backward;
+			
+		ELSIF bManWeld AND NOT bManMoveFw AND NOT bManMoveFw THEN
+			nManualModeState := eManual_weld;
+			
+		END_IF
+		
+	// Keep welding active while the manual weld command is pressed.
+	eManual_weld:
+		IF bManMoveFw OR bManMoveBw THEN
+			nManualModeState := eManual_error;
+		ELSIF NOT bManWeld THEN
+			nManualModeState := eManual_nothing;
+		END_IF
+		bWeld := TRUE;
+	
+	// Move the stepper motor backward until the command is released.
+	eManual_backward:
+		bWeld := FALSE;
+		IF bManMoveFw OR bManWeld THEN
+			nManualModeState := eManual_error;
+		ELSIF NOT bManMoveBw THEN
+			nManualModeState := eManual_nothing;	
+		END_IF		
+		fbStepper.M_MoveBackward();
+	
+	// Move the stepper motor forward until the command is released.
+	eManual_forward:
+		bWeld := FALSE;
+		IF bManMoveBw OR bManWeld THEN
+			nManualModeState := eManual_error;
+		ELSIF NOT bManMoveFw THEN
+			nManualModeState := eManual_nothing;	
+		END_IF
+		fbStepper.M_MoveForward();
+	
+	// Dont do anything until all variables are false
+	eManual_error:
+		bWeld := FALSE;
+		fbStepper.M_StopEngine();
+		IF NOT bManMoveFw AND NOT bManMoveBw AND NOT bManWeld THEN
+			nManualModeState := eManual_nothing;
+		END_IF
+
+END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_RobotReset" Id="{025c426a-3322-494b-accd-1a73acfbe8ac}">
+      <Declaration><![CDATA[METHOD PRIVATE M_RobotReset
+VAR_INPUT
+END_VAR
+VAR
+	bCalibrated		: BOOL;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bWeld := FALSE;
+bCalibrated := fbStepper.M_Calibrate();
+IF bCalibrated THEN
+	bRobotReleased := FALSE;
+	nState := eMode_Secure;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_RobotSecure" Id="{3323f2c5-0a5e-45d9-94b4-6d5d5ed9316e}">
+      <Declaration><![CDATA[METHOD PRIVATE M_RobotSecure
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bWeld := FALSE;
+fbStepper.M_StopEngine();
+
+IF fbRTrigStart.Q THEN
+	bRobotReleased := TRUE;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_RobotSemiAutomatic" Id="{7060308a-f815-4853-8798-8e9feecbe29c}">
+      <Declaration><![CDATA[METHOD M_RobotSemiAutomatic
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[fbWeldingTimer(IN:= nSemiAutoState = eSemi_weld, PT := order.tWeldingTime);
+CASE nSemiAutoState OF
+	eSemi_ready:
+		IF fbRTrigStart.Q AND NOT order.bDone THEN
+			nSemiAutoState := eSemi_wayThere;
+		END_IF
+		
+	eSemi_wayThere:
+		bWeld := FALSE;
+		IF M_ApproachTable(order.nTargetTable) THEN
+			nSemiAutoState := eSemi_weld;
+		END_IF
+		
+	eSemi_weld:
+		IF fbWeldingTimer.Q THEN
+			nSemiAutoState := eSemi_wayBack;
+		END_IF
+		bWeld := TRUE;
+		
+	eSemi_wayBack:
+		bWeld := FALSE;
+		fbStepper.M_MoveBackward();
+		IF fbStepper.P_Home THEN
+			nSemiAutoState := eSemi_ready;
+			order.bDone := TRUE;
+		END_IF
+END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_RobotStop" Id="{3aafd211-4376-422d-a12b-e789239456ad}">
+      <Declaration><![CDATA[METHOD PRIVATE M_RobotStop
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bWeld := FALSE;
+fbStepper.M_StopEngine();
+bRobotReleased := FALSE;
+IF NOT bStop THEN
+	nState := eMode_Secure;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="P_Mode" Id="{16e2b740-90a2-43c3-93b2-7efec441eb44}">
+      <Declaration><![CDATA[PROPERTY P_Mode : E_Mode]]></Declaration>
+      <Get Name="Get" Id="{de04a5b8-daa4-41ed-a1ab-1d5c0f2d28db}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[P_Mode := nState;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{1ea64e28-ee27-40b6-a2d9-a2c6c66c5f84}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[IF NOT (bMoveFw OR bMoveBw) THEN
+	bWeld := FALSE;
+	nState := P_Mode;
+END_IF]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
   </POU>
 </TcPlcObject>

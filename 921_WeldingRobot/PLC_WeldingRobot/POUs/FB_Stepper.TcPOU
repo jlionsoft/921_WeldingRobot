@@ -12,6 +12,7 @@ VAR
 	bHome					: BOOL;
 	bBusy					: BOOL;
 	
+	nTargetPosition			: BOOL;
 	fbRTrigPositionChanged	: R_TRIG;
 	fbRTrigHomingSensor		: R_TRIG;
 END_VAR
@@ -26,7 +27,42 @@ END_VAR
 ]]></Declaration>
       <Implementation>
         <ST><![CDATA[bHome := bHomingSensor;
+bBusy := bMoveFw OR bMoveBw;
 M_CheckAndCalibratePosition();]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_ApproachPosition" Id="{f8be4386-7853-4b26-a62c-3df36aa95500}">
+      <Declaration><![CDATA[METHOD M_ApproachPosition : BOOL
+VAR_INPUT
+	nTargetPosition		: INT;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF nTargetPosition > nCurrentPosition THEN
+	M_MoveForward();
+ELSIF nTargetPosition < nCurrentPosition THEN
+	M_MoveBackward();
+ELSE
+	M_StopEngine();
+	M_ApproachPosition := TRUE;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="M_Calibrate" Id="{849cf1a9-e854-41da-9874-15757cf38635}">
+      <Declaration><![CDATA[METHOD M_Calibrate : BOOL
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[//calibrate when homesensor is raised
+fbRTrigHomingSensor(ClK := bHomingSensor);
+IF fbRTrigHomingSensor.Q OR bHomingSensor THEN
+	nCurrentPosition := 0;
+	M_StopEngine();
+	M_Calibrate := TRUE;
+ELSE
+	M_MoveBackward();
+END_IF]]></ST>
       </Implementation>
     </Method>
     <Method Name="M_CheckAndCalibratePosition" Id="{1e3c76b4-1a59-4bf7-8685-9d9c3b1015d2}">
@@ -35,13 +71,15 @@ VAR_INPUT
 END_VAR
 ]]></Declaration>
       <Implementation>
-        <ST><![CDATA[fbRTrigPositionChanged(CLK := bStepSensor);
+        <ST><![CDATA[//check for changed poition and increment current position 
+fbRTrigPositionChanged(CLK := bStepSensor);
 IF fbRTrigPositionChanged.Q AND bMoveFw THEN
 	nCurrentPosition := nCurrentPosition + 1;
 ELSIF fbRTrigPositionChanged.Q AND bMoveBw THEN
 	nCurrentPosition := nCurrentPosition -1;
 END_IF
 
+//calibrate when homesensor is raised
 fbRTrigHomingSensor(ClK := bHomingSensor);
 IF fbRTrigHomingSensor.Q THEN
 	nCurrentPosition := 0;
@@ -116,6 +154,25 @@ END_VAR
         </Implementation>
       </Get>
       <Set Name="Set" Id="{972b4ecd-f97d-43e6-a32f-e5884646440e}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="P_Home" Id="{87e785c9-098e-4049-b523-121d32d2b274}">
+      <Declaration><![CDATA[PROPERTY P_Home : BOOL]]></Declaration>
+      <Get Name="Get" Id="{8a668732-1440-40a1-9025-ddfa5f6047a3}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[P_Home := bHome;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{82b82221-f773-4798-be63-d950bfee4338}">
         <Declaration><![CDATA[VAR
 END_VAR
 ]]></Declaration>

@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <DUT Name="ST_Order" Id="{15863fff-617e-48f1-9d77-46ec19d492fa}">
+    <Declaration><![CDATA[TYPE ST_Order :
+STRUCT
+	nTargetTable	: INT;
+	tWeldingTime	: TIME;
+	bDone			: BOOL;
+	bIsValid		: BOOL;
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>
